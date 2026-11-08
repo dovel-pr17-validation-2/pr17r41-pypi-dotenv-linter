@@ -1,0 +1,62 @@
+from typing import Final
+
+from typing_extensions import final
+
+from dotenv_linter.grammar.fst import Value
+from dotenv_linter.violations.values import (
+    CommentInValueViolation,
+    InvalidEOLViolation,
+    QuotedValueViolation,
+    SpacedValueViolation,
+)
+from dotenv_linter.visitors.base import BaseFSTVisitor
+
+CRLF_EOL: Final = '\r'
+
+
+@final
+class ValueVisitor(BaseFSTVisitor):
+    """Finds wrong values."""
+
+    def visit_value(self, node: Value) -> None:
+        """
+        Visits value nodes to find errors.
+
+        Raises:
+            QuotedValueViolation
+            SpacedValueViolation
+            InvalidEOLViolation
+            CommentInValueViolation
+
+        """
+        self._check_value_quotes(node)
+        self._check_value_spaces(node)
+        self._is_crlf_eol_used(node)
+        self._check_comment_in_value(node)
+
+        self.generic_visit(node)
+
+    def _check_value_spaces(self, node: Value) -> None:
+        if node.raw_text.endswith(' ') or node.raw_text.startswith(' '):
+            self._add_violation(SpacedValueViolation(node, text=node.raw_text))
+
+    def _check_value_quotes(self, node: Value) -> None:
+        text = node.raw_text.strip()
+        if '\n' in text:
+            # Quotes are the only way to write a multiline value.
+            return
+
+        if (text.startswith('"') and text.endswith('"')) or (
+            text.startswith("'") and text.endswith("'")
+        ):
+            self._add_violation(QuotedValueViolation(node, text=node.raw_text))
+
+    def _is_crlf_eol_used(self, node: Value) -> None:
+        if node.raw_text.endswith(CRLF_EOL):
+            self._add_violation(InvalidEOLViolation(node, text=node.text))
+
+    def _check_comment_in_value(self, node: Value) -> None:
+        if '# ' in node.raw_text:
+            self._add_violation(
+                CommentInValueViolation(node, text=node.raw_text)
+            )
